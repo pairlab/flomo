@@ -1,0 +1,205 @@
+# @package _global_
+# ---------------------------------------------------------------------------
+# Dataset mixture used for the FloMo paper run. Select with `datasets=flomo`
+# and set `data_root` to the directory holding the preprocessed datasets:
+#   python train.py datasets=flomo data_root=/path/to/flomo_data
+#
+# All data paths are rooted at `data_root`; the Wan checkpoints come from
+# `wan_ckpt_dir` in train.yaml.
+#
+# Each entry merges the same shared YAML defaults, then declares its own data
+# and modality settings. YAML merges expand at load time; CLI overrides such
+# as datasets.0.args.sample_stride=2 affect only the selected entry.
+# ---------------------------------------------------------------------------
+data_root: ???
+
+# Storage and tracking settings shared by the paper datasets.
+dataset_defaults: &dataset_defaults
+  track_method: uniform_4096_reinit_16
+  tracker: spatialtracker
+  tracker_mode: 3d
+  img_shape: [256, 256]
+  true_horizon: 16
+  track_pred_horizon: 16
+  interp_method: none
+  num_tracks: 4096
+  subsampling: 1
+  sample_stride: 1
+  use_cached_index_map: true
+  supervision: cumulative_disp
+  tracks_normalizer: null
+
+datasets:
+  - name: egoverse                          # unique id used for logging + normalizer keys
+    type: egoverse                          # dataset class: egoverse | molmoact2 | realyam
+    weight: 0.65                            # paper mid-training sampling probability
+    inputs:  [img, text]                    # conditioning modalities
+    outputs: [video, motion_tokens]         # prediction targets
+    args:
+      <<: *dataset_defaults
+      # Paper EgoVerse subset; the name keys the cached index map.
+      dataset_names: [egoverse_lanczos_10h_train]
+      dataset_path: ${data_root}            # root holding those splits
+      root_dir: /tmp                        # scratch dir for transient files
+      cond_views: [primary]                 # cameras used to condition
+      pred_views: [primary]                 # views the model predicts (flow/video)
+      keys_to_load: [vae_latent, text, text_emb, motion_tokens, viz_video, intrs]  # arrays to read from the preprocessed store
+
+  - name: molmoact2
+    type: molmoact2
+    weight: 0.125
+    inputs:  [img, text]
+    outputs: [action, video, motion_tokens]
+    args:
+      <<: *dataset_defaults
+      dataset_names: [molmoact2_train]
+      dataset_path: ${data_root}
+      root_dir: /tmp
+      cond_views: [primary, left, right]
+      pred_views: [primary]
+      keys_to_load: [vae_latent, actions, motion_tokens, text, text_emb, viz_video, intrs]
+      normalize_actions: true  # normalize actions with per-dataset stats
+      relative_rotation_actions: true  # predict rotations relative to current pose
+
+  - name: realyam
+    type: realyam
+    weight: 0.125
+    inputs:  [img, text]
+    outputs: [action, video, motion_tokens]
+    args:
+      <<: *dataset_defaults
+      dataset_names:
+        - real_yam_coffee_randomized_train
+        - real_yam_coffee_recovery_train
+        - real_yam_corn_bowl_2_train
+        - real_yam_corn_bowl_3_fixed_train
+        - real_yam_corn_bowl_fixed_train
+        - real_yam_croissant_oven_train
+        - real_yam_croissant_oven_randomized_train
+        - real_yam_croissant_oven_recovery_door_half_open_train
+        - real_yam_croissant_oven_recovery_left_train
+        - real_yam_croissant_oven_recovery_misc_train
+        - real_yam_croissant_oven_recovery_right_train
+        - real_yam_croissant_oven_recovery_right_2_train
+        - real_yam_croissant_oven_recovery_too_close_train
+        - real_yam_croissant_oven_recovery_below_door_train
+        - real_yam_scoop_coffee_train
+        - real_yam_screwdriver_toolbox_train
+        - real_yam_screwdriver_toolbox_left_right_train
+        - real_yam_screwdriver_toolbox_randomized_train
+        - real_yam_screwdriver_toolbox_recovery_left_train
+        - real_yam_screwdriver_toolbox_recovery_left_2_train
+        - real_yam_screwdriver_toolbox_recovery_left_3_train
+        - real_yam_screwdriver_toolbox_recovery_right_train
+        - real_yam_screwdriver_toolbox_recovery_right_2_train
+        - real_yam_screwdriver_toolbox_right_left_train
+        - real_yam_screwdriver_toolbox_recovery_lid_train
+      dataset_path: ${data_root}/real_yam_squash
+      root_dir: /tmp
+      cond_views: [primary, left, right]
+      pred_views: [primary]
+      keys_to_load: [vae_latent, actions, motion_tokens, text, text_emb, viz_video, intrs]
+      normalize_actions: true
+      relative_rotation_actions: true
+      skip_first_frame: true  # drop the first (often static) frame
+      filter_no_motion: true  # skip windows with negligible motion
+
+  - name: realyam_play
+    type: realyam
+    weight: 0.05
+    inputs:  [img, text]
+    outputs: [action, video, motion_tokens]
+    args:
+      <<: *dataset_defaults
+      dataset_names:
+        - real_yam_play_train
+      dataset_path: ${data_root}/real_yam_squash
+      root_dir: /tmp
+      cond_views: [primary, left, right]
+      pred_views: [primary]
+      keys_to_load: [vae_latent, actions, motion_tokens, text, text_emb, viz_video, intrs]
+      normalize_actions: true
+      relative_rotation_actions: true
+      skip_first_frame: true
+      filter_no_motion: true
+
+  - name: realyam_human
+    type: realyam
+    weight: 0.05
+    inputs:  [img, text]
+    outputs: [video, motion_tokens]
+    args:
+      <<: *dataset_defaults
+      dataset_names:
+        - real_yam_asparagus_black_bowl_human_train
+        - real_yam_asparagus_orange_bowl_human_train
+        - real_yam_corn_2_bowls_human_train
+        - real_yam_corn_bowl_human_train
+        - real_yam_croissant_in_oven_human_train
+        - real_yam_croissant_out_oven_human_aligned_train
+        - real_yam_oven_pepper_human_train
+        - real_yam_scoop_coffee_human_aligned_train
+        - real_yam_scoop_coffee_mug_human_2_train
+        - real_yam_screwdriver_toolbox_human_aligned_train
+        - real_yam_toolbox_human_2_train
+        - real_yam_unseen_toolbox_human_3_train
+      dataset_path: ${data_root}/real_yam_squash
+      root_dir: /tmp
+      cond_views: [primary]
+      pred_views: [primary]
+      keys_to_load: [vae_latent, motion_tokens, text, text_emb, viz_video, intrs]
+      normalize_actions: true
+      relative_rotation_actions: true
+      skip_first_frame: false
+      filter_no_motion: false
+
+val_datasets:
+  - name: egoverse
+    type: egoverse
+    weight: 1.0
+    inputs:  [img, text]
+    outputs: [video, motion_tokens]
+    args:
+      <<: *dataset_defaults
+      dataset_names: [egoverse_lanczos_val]
+      dataset_path: ${data_root}
+      root_dir: /tmp
+      cond_views: [primary]
+      pred_views: [primary]
+      keys_to_load: [vae_latent, text, text_emb, motion_tokens, viz_video, intrs]
+
+  - name: molmoact2
+    type: molmoact2
+    weight: 1.0
+    inputs:  [img, text]
+    outputs: [action, video, motion_tokens]
+    args:
+      <<: *dataset_defaults
+      dataset_names: [molmoact2_val]
+      dataset_path: ${data_root}
+      root_dir: /tmp
+      cond_views: [primary, left, right]
+      pred_views: [primary]
+      keys_to_load: [vae_latent, actions, motion_tokens, text, text_emb, viz_video, intrs]
+      normalize_actions: true
+      relative_rotation_actions: true
+
+  - name: realyam
+    type: realyam
+    weight: 1.0
+    inputs:  [img, text]
+    outputs: [action, video, motion_tokens]
+    args:
+      <<: *dataset_defaults
+      dataset_names:
+        - real_yam_play_val_val
+        - real_yam_asparagus_bowl_fixed_train
+      dataset_path: ${data_root}/real_yam_squash
+      root_dir: /tmp
+      cond_views: [primary, left, right]
+      pred_views: [primary]
+      keys_to_load: [vae_latent, actions, motion_tokens, text, text_emb, viz_video, intrs]
+      normalize_actions: true
+      relative_rotation_actions: true
+      skip_first_frame: false
+      filter_no_motion: false

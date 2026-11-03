@@ -1,0 +1,68 @@
+defaults:
+  - _self_
+
+# MODE & TRACKER SELECTION
+# mode: video | tracks | vae_latent_h16 | text | text_emb | meta
+# Run video before tracks / vae_latent_h16 and text before text_emb (they read those stores).
+mode: tracks  # preprocessing product to generate
+tracker_type: spatialtracker  # spatialtracker | vggt
+
+# DATA SOURCES
+sources:
+  - name: mecka
+    root: ???                       # path to your EgoVerse raw data root
+
+# OUTPUT CONFIGURATION
+dest_dir: ./preprocessed_data  # training data_root
+output_name: egoverse_lanczos  # EgoVerseDataset dataset_names entries are <output_name>_<split>
+source_output_name: ${output_name}  # read the preprocessed video / text stores from this output_name
+split: train  # train | val | all
+val_ratio: 0.1  # fraction of clips held out for val
+split_seed: 0  # seed for the train/val split
+skip_exist: true  # skip clips already written
+progress: true
+max_episodes:  # cap clips processed (empty = all)
+default_fps: 30
+output_format: zarr  # must be zarr: EgoVerseDataset reads zarr only
+
+# TRACK OUTPUTS
+track_outputs: ['3d', 'pose']  # track products to write (2d, 3d, pose, depth); pose supplies intrs
+multi_view: false  # track all camera views or only the primary
+output_size: 256
+img_size: 256
+camera_source: spatialtrackerv2
+
+# COMMON TRACKING PARAMETERS
+n_tracks: 4096  # points tracked per frame
+init_queries: uniform  # how track query points are seeded
+horizon: 16  # frames tracked per window
+reinit: true  # re-seed track queries each window
+batch_size: 8
+chunk_size: 96  # frames per tracker forward pass
+subsampling: 1  # temporal frame subsample
+
+# Directory holding the downloaded Wan 2.2 weights (override per machine).
+wan_ckpt_dir: ./wan_checkpoints
+
+# TEXT_EMB MODE — WanTextEncoder (UMT5-XXL); embeds every segments_label of the text stores
+tokenizer_path: "google/umt5-xxl"
+text_encoder_weights: ${wan_ckpt_dir}/models_t5_umt5-xxl-enc-bf16.pth
+
+# VAE_LATENT_H16 MODE — WanVideoVAE38 (Wan 2.2)
+vae_weights: ${wan_ckpt_dir}/Wan2.2_VAE.pth
+wan:
+  image_hw: [256, 256]  # keep in sync with img_size above
+
+# WORKER SHARDING
+num_workers: 1
+worker_id: 0
+# Optional sub-partition within (worker_id, num_workers) slice for extra parallelism.
+# Each (worker_id, sub_id) pair takes every sub_workers-th row offset by sub_id.
+sub_workers: 1
+sub_id: 0
+
+# SKIP LIST — skip clips already finished elsewhere (e.g. on another machine).
+# Path to a JSONL manifest where each line has at least {"sample_id": "..."}.
+# Filter is applied AFTER worker sharding so worker_id partition assignments
+# stay stable across preprocessing environments. null = no filter.
+skip_ids_file: null

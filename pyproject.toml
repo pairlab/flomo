@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flomo"
+version = "0.1.0"
+description = "FloMo: any-to-any forward-dynamics cotraining for robot learning from video"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "FloMo Authors"},
+]
+keywords = [
+    "robotics",
+    "video modeling",
+    "world modeling",
+    "forward dynamics",
+    "imitation learning",
+    "computer vision",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Direct imports of the shipped package (flomo/ + preprocessing/ + entrypoints).
+# torch / torchvision are listed loosely — install the build matching your CUDA.
+# The Wan 2.2 (`wan`) and DreamZero (`groot`) backbones are repo-root clones (see
+# README), not PyPI packages. Importing `wan.modules` runs `wan/__init__.py`, which
+# eagerly imports every Wan pipeline; decord, easydict, ftfy, imageio, librosa,
+# opencv-python, and regex are those import-time requirements. transformers /
+# diffusers / peft / sentencepiece ranges mirror Wan's pins. numpy is capped <2.0
+# (Wan/DreamZero), which in turn caps accelerate <1.2 (1.2+ hardcodes numpy._core
+# and breaks under numpy 1.x). pandas / pyarrow are MolmoAct2 preprocessing only.
+dependencies = [
+    "accelerate>=1.1.1,<1.2",
+    "av==15.0.0",
+    "decord>=0.6",
+    "diffusers>=0.31",
+    "easydict",
+    "einops>=0.8",
+    "ftfy",
+    "h5py>=3.11",
+    "hydra-core>=1.2",
+    "imageio>=2.35",
+    "librosa",
+    "matplotlib>=3.5",
+    "numpy>=1.24,<2.0",
+    "omegaconf>=2.3",
+    "opencv-python>=4.9.0.80",
+    "pandas",
+    "peft>=0.5",
+    "pillow>=10.0",
+    "pyarrow",
+    "regex",
+    "scipy>=1.10",
+    "sentencepiece>=0.1.99",
+    "torch>=2.5",
+    "torchvision>=0.20",
+    "tqdm>=4.66",
+    "transformers>=4.49,<=4.51.3",
+    "wandb>=0.16",
+    "zarr>=2.16",
+]
+
+[tool.setuptools]
+include-package-data = true
+zip-safe = false
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["flomo*", "preprocessing*"]
+namespaces = false
+exclude = [
+    "outputs*",
+    "wandb*",
+    "logs*",
+    "checkpoints*",
+]

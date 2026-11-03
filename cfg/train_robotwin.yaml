@@ -1,0 +1,25 @@
+# RoboTwin single-task fine-tuning: 5,000 updates at batch 256. See README.
+defaults:
+  - train
+  - override datasets: robotwin
+  - _self_
+
+batch_size: 256
+gpu_max_bs: 8
+num_epochs: 10
+train_steps_per_epoch: 500
+eval_interval: 0
+ddp_find_unused_parameters: true
+
+optim:
+  lr_schedule: null
+  lr: 5.6e-5
+
+augmentations:
+  apply_to_types: [robotwin]
+  color_jitter: true
+  color_jitter_strength: 0.2
+  hue: 0.03
+  random_resized_crop: true
+  random_resized_crop_scale: [0.9, 1.0]
+  random_resized_crop_ratio: [0.98, 1.02]

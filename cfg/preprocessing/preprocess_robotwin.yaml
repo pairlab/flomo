@@ -1,0 +1,56 @@
+# MODE & TRACKER SELECTION
+# mode: 'tracks' (head-camera tracks), 'text_emb' (UMT5-XXL embeddings), 'vae_latent_h16' (Wan 2.2 VAE horizon windows, all three cameras)
+mode: tracks
+tracker_type: spatialtracker
+
+defaults:
+  - _self_
+
+# DATASET CONFIGURATION
+source_dir: ./RoboTwin/data/demo_clean          # <source_dir>/<task>/<embodiment>/data/episode_*.hdf5
+dest_dir: ./RoboTwin/data/flomo
+output_name: demo_clean                         # sidecars land in <dest_dir>/<output_name>; dataset_path for training
+embodiment: aloha_agilex
+task_names: [open_laptop]                       # one policy per task in the paper setup
+camera_names:
+  - cam_head                                    # tracks are head-camera only
+skip_exist: true
+progress: true
+
+# OUTPUT CONFIGURATION
+track_outputs: ['3d', 'pose']
+multi_view: false
+output_size: 256
+img_size: 256
+
+# COMMON TRACKING PARAMETERS
+n_tracks: 4096
+init_queries: uniform
+horizon: 16
+
+# TRACKING WINDOW PARAMETERS
+reinit: true
+batch_size: 1
+
+# SPATIALTRACKER & VGGT SHARED
+chunk_size: 32
+
+# SPATIALTRACKER-SPECIFIC
+subsampling: 1
+
+# Directory holding the downloaded Wan 2.2 weights (override per machine).
+wan_ckpt_dir: ./wan_checkpoints
+
+# TEXT_EMB MODE (mode='text_emb') — WanTextEncoder (UMT5-XXL) on each episode's `instruction`
+tokenizer_path: "google/umt5-xxl"
+text_encoder_weights: ${wan_ckpt_dir}/models_t5_umt5-xxl-enc-bf16.pth
+
+# VAE_LATENT_H16 MODE (mode='vae_latent_h16') — WanVideoVAE38 (Wan 2.2)
+vae_weights: ${wan_ckpt_dir}/Wan2.2_VAE.pth
+wan:
+  image_hw: [256, 256]
+
+# FILTERING & PARALLELIZATION
+max_demos:  # cap demos processed (empty = all)
+num_workers: 1
+worker_id: 0

@@ -1,0 +1,84 @@
+# MODE & TRACKER SELECTION
+# mode: 'tracks'   (top view only — point tracks via spatialtracker/vggt)
+#       'video'    (4:3 center-crop then squash to img_size**2; THWC uint8 per view)
+#       'text'     (per-episode annotated language as raw string)
+#       'text_emb' (WanTextEncoder UMT5-XXL embedding of the annotated string)
+#       'vae_latent' (per-frame Wan2.2 VAE latent per view)
+#       'vae_latent_h16' (Wan2.2 VAE latent of the (horizon+1)-frame window per frame, per view)
+#       'actions'  (14-D bimanual joint actions + observation.state from data parquet)
+mode: tracks
+# tracker_type: 'spatialtracker' (2D/3D/pose/depth), 'vggt' (pose/depth)
+tracker_type: spatialtracker
+
+defaults:
+  - _self_
+
+# DATASET CONFIGURATION
+# Selection index built with `python -m preprocessing.preprocess_molmoact2 index select ...`
+index_path: ???                   # path to your MolmoAct2 selection index.jsonl
+dest_dir: ./preprocessed_data
+# Directory holding the downloaded Wan 2.2 weights (override per machine).
+wan_ckpt_dir: ./wan_checkpoints
+output_name: molmoact2
+# Where tracks/vae_latent/vae_latent_h16 read the preprocessed `video`
+# store from. Defaults to output_name; override only if the video store lives
+# under a different output_name.
+source_output_name: ${output_name}
+camera_names:                     # used by video / vae_latent / vae_latent_h16; tracks always uses top
+  - top
+  - left
+  - right
+skip_exist: true  # skip clips already written
+progress: true
+
+# TRAIN/VAL SPLIT (egoverse-style stable hash)
+# Each clip's sample_id is hashed with split_seed; clips below val_ratio land
+# in 'val', the rest in 'train'. Run preprocessing twice (split=train then
+# split=val) to materialize both splits under <output_root>/<split>/...
+split: train             # 'train' | 'val' | 'all'
+val_ratio: 0.0909090909
+split_seed: 0
+
+# OUTPUT CONFIGURATION
+track_outputs: ['3d', 'pose', 'depth']  # track products to write
+multi_view: false  # track all camera views or only the primary
+output_size: 256
+img_size: 256
+
+# COMMON TRACKING PARAMETERS
+n_tracks: 4096  # points tracked per frame
+init_queries: uniform  # how track query points are seeded
+horizon: 16  # frames tracked per window
+
+# TRACKING WINDOW PARAMETERS
+reinit: true  # re-seed track queries each window
+batch_size: 1
+
+# SPATIALTRACKER & VGGT SHARED
+chunk_size: 96  # frames per tracker forward pass
+
+# SPATIALTRACKER-SPECIFIC
+subsampling: 1  # temporal frame subsample
+
+# TEXT_EMB MODE — WanTextEncoder (UMT5-XXL); embeds the per-episode annotated string
+tokenizer_path: "google/umt5-xxl"
+text_encoder_weights: ${wan_ckpt_dir}/models_t5_umt5-xxl-enc-bf16.pth
+
+# VAE_LATENT / VAE_LATENT_H16 MODES — WanVideoVAE38 (Wan 2.2)
+# vae_latent_h16 encodes the (horizon+1)-frame sliding window video[t:t+horizon+1]
+# per frame (horizon from the tracking `horizon` field above). The Wan VAE
+# compresses time 4x and consumes frames in 1+4k groups: a 17-frame window
+# (horizon=16) yields 5 latent frames with no dropped frames.
+vae_weights: ${wan_ckpt_dir}/Wan2.2_VAE.pth
+wan:
+  image_hw: [256, 256]    # keep in sync with img_size above
+
+# PARALLELIZATION
+num_workers: 1
+worker_id: 0
+# Smoke-test cap: process only the first N clips after the split filter (per worker
+# slice). null = no cap. Useful for end-to-end runs before scaling to all clips.
+max_clips: null
+# Smoke-test cap: truncate every decoded view to the first N frames before
+# tracking/encoding. null = no cap. Applies to tracks/video/vae_latent/vae_latent_h16.
+max_frames: null

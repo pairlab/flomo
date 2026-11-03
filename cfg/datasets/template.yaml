@@ -1,0 +1,81 @@
+# @package _global_
+# ---------------------------------------------------------------------------
+# FloMo cotrain dataset spec — TEMPLATE. Copy/edit this, or point `datasets=` at
+# your own file. Fill in the fields marked `???` / `<...>`.
+#
+# `datasets` is the training mixture, `val_datasets` the held-out eval set. The
+# model derives its active input/output modalities as the union over all entries,
+# so every entry must declare `inputs` / `outputs`. Each dataset is sampled in
+# proportion to `weight`. Add more entries to cotrain a mixture.
+#
+# See cfg/datasets/flomo.yaml for the exact mixture used in the paper.
+# ---------------------------------------------------------------------------
+
+# Root dir holding your preprocessed data (see preprocessing/). REQUIRED.
+data_root: ???
+
+datasets:
+  - name: my_dataset          # unique id; used for logging + normalizer keys
+    type: realyam             # dataset class: egoverse | molmoact2 | realyam
+    weight: 1.0               # share of sampled data relative to other datasets
+    inputs:  [img, text]      # conditioning modalities
+    outputs: [action, video, motion_tokens]   # prediction targets (drop `action` for action-less data)
+    args:
+      dataset_names: [<your_train_split>]   # preprocessed split name(s) to load
+      dataset_path: ${data_root}            # root holding those splits
+      root_dir: /tmp                        # scratch dir for transient files
+      # --- which cameras condition vs. are predicted ---
+      cond_views: [primary]                 # e.g. [primary, left, right] for wrist cams
+      pred_views: [primary]                 # flow/video predicted in these views only
+      # --- which arrays to read from the preprocessed store ---
+      keys_to_load: [vae_latent, actions, motion_tokens, text, text_emb, viz_video, intrs]
+      # --- track/preprocessing settings (must match how the data was generated) ---
+      supervision: cumulative_disp          # 3D motion representation the model predicts: cumulative_disp | optical_flow | point_tracks
+      tracks_normalizer: null               # null | ramen (ramen requires supervision=cumulative_disp)
+      track_method: uniform_4096_reinit_16  # track sampling scheme set during preprocessing
+      tracker: spatialtracker               # tracker used at preprocess time: spatialtracker | vggt
+      tracker_mode: 3d                      # track dimensionality: 2d | 3d
+      num_tracks: 4096                      # points tracked per frame
+      img_shape: [256, 256]                 # pixel HxW (-> 16x16 Wan-VAE latent)
+      true_horizon: 16                      # frames per window
+      track_pred_horizon: 16                # track frames the model predicts
+      interp_method: none                   # resample tracks to track_pred_horizon: none | linear | spline
+      subsampling: 1                        # temporal frame subsample (keep at 1)
+      sample_stride: 1                      # keep every Nth window (1 = all)
+      use_cached_index_map: true            # cache the window index for fast reloads
+      # --- action options (only when `action` is in outputs) ---
+      normalize_actions: true               # normalize actions with per-dataset stats
+      relative_rotation_actions: true       # predict rotations relative to current pose
+      skip_first_frame: false               # drop the first (often static) frame
+      filter_no_motion: false               # skip windows with negligible motion
+
+val_datasets:
+  - name: my_dataset_val
+    type: realyam
+    weight: 1.0                # ignored for val (evaluated sequentially)
+    inputs:  [img, text]
+    outputs: [action, video, motion_tokens]
+    args:
+      dataset_names: [<your_val_split>]
+      dataset_path: ${data_root}
+      root_dir: /tmp
+      cond_views: [primary]
+      pred_views: [primary]
+      keys_to_load: [vae_latent, actions, motion_tokens, text, text_emb, viz_video, intrs]
+      supervision: cumulative_disp
+      tracks_normalizer: null
+      track_method: uniform_4096_reinit_16
+      tracker: spatialtracker
+      tracker_mode: 3d
+      num_tracks: 4096
+      img_shape: [256, 256]
+      true_horizon: 16
+      track_pred_horizon: 16
+      interp_method: none
+      subsampling: 1
+      sample_stride: 1
+      use_cached_index_map: true
+      normalize_actions: true
+      relative_rotation_actions: true
+      skip_first_frame: false
+      filter_no_motion: false

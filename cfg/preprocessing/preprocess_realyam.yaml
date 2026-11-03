@@ -1,0 +1,57 @@
+# MODE & TRACKER SELECTION
+# mode: 'tracks' (generate tracks), 'text_emb' (UMT5-XXL embeddings), 'vae_latent_h16' (Wan 2.2 VAE horizon windows)
+mode: tracks
+# tracker_type: 'spatialtracker' (2D/3D/pose/depth, multi-view), 'vggt' (pose/depth, multi-view)
+tracker_type: spatialtracker
+
+defaults:
+  - _self_
+
+# DATASET CONFIGURATION
+source_dir: ./preprocessed_data/real_yam_data  # raw RealYam data root
+dest_dir: ./preprocessed_data
+output_name: real_yam                           # output dir name under dest_dir
+task_names: []                                  # empty = all task folders under source_dir
+camera_names:
+  - front_img_1                                 # tracked camera
+skip_exist: true  # skip clips already written
+progress: true
+
+# OUTPUT CONFIGURATION
+# track_outputs: '2d'/'3d' (spatialtracker only), 'pose'/'depth' (spatialtracker/vggt)
+track_outputs: ['3d', 'pose', 'depth']
+multi_view: false                               # true = track all cameras jointly
+output_size: 256                                # square output after LANCZOS squash
+img_size: 256                                   # tracker input size
+
+# COMMON TRACKING PARAMETERS
+n_tracks: 4096                                  # RealYam: matches loader's num_tracks default
+init_queries: uniform                           # uniform query grid
+horizon: 16                                     # frames tracked per window
+
+# TRACKING WINDOW PARAMETERS
+reinit: true                                   # re-seed track queries each window
+batch_size: 1
+
+# SPATIALTRACKER & VGGT SHARED
+chunk_size: 64                                  # frames per tracker forward pass
+
+# SPATIALTRACKER-SPECIFIC
+subsampling: 1                                  # temporal frame subsample
+
+# Directory holding the downloaded Wan 2.2 weights (override per machine).
+wan_ckpt_dir: ./wan_checkpoints
+
+# TEXT_EMB MODE (mode='text_emb') — WanTextEncoder (UMT5-XXL)
+tokenizer_path: "google/umt5-xxl"
+text_encoder_weights: ${wan_ckpt_dir}/models_t5_umt5-xxl-enc-bf16.pth
+
+# VAE_LATENT_H16 MODE (mode='vae_latent_h16') — WanVideoVAE38 (Wan 2.2)
+vae_weights: ${wan_ckpt_dir}/Wan2.2_VAE.pth
+wan:
+  image_hw: [256, 256]
+
+# FILTERING & PARALLELIZATION
+max_demos:  # cap demos processed (empty = all)
+num_workers: 1
+worker_id: 0

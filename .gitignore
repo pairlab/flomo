@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+build/
+dist/
+.eggs/
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints
+*.lock
+*.lprof
+
+# Editors / OS / agents
+.idea/
+.vscode/
+.DS_Store
+.claude/
+launch.json
+
+# Repo-root clones and weights (see README)
+Wan2.2/
+dreamzero/
+SpaTrackerV2/
+vggt/
+wan_checkpoints/
+
+# Data
+preprocessed_data*/
+index_maps/
+*.hdf5
+*.rrd
+
+# Run outputs
+checkpoints/
+local_checkpoints/
+outputs/
+multirun/
+results/
+wandb/
+artifacts/
+viz_out/
+exps/
+*.log
+tmp*/
+temp/

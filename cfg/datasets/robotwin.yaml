@@ -1,0 +1,41 @@
+# @package _global_
+# One RoboTwin 2.0 task (Aloha-AgileX, demo_clean). `data_root` is RoboTwin's `data/`;
+# sidecars come from preprocessing/preprocess_robotwin.py.
+data_root: ???
+robotwin_task: ???  # e.g. pick_dual_bottles | stack_bowls_two | open_laptop | hanging_mug | handover_mic
+
+datasets:
+  - name: robotwin
+    type: robotwin
+    weight: 1.0
+    inputs:  [img, text]
+    outputs: [action, motion_tokens]
+    args:
+      dataset_names: ["${robotwin_task}_train"]
+      raw_dir: ${data_root}/demo_clean
+      embodiment: aloha_agilex
+      dataset_path: ${data_root}/flomo/demo_clean
+      splits_dir: ${data_root}/flomo/demo_clean/splits
+      root_dir: /tmp
+      cond_views: [primary, left, right]  # head + both wrist cameras
+      pred_views: [primary]
+      keys_to_load: [vae_latent, actions, motion_tokens, text, text_emb, viz_video, intrs]
+      supervision: cumulative_disp
+      tracks_normalizer: null
+      track_method: uniform_4096_reinit_16
+      tracker: spatialtracker
+      tracker_mode: 3d
+      num_tracks: 4096
+      img_shape: [256, 256]
+      true_horizon: 16
+      track_pred_horizon: 16
+      interp_method: none
+      subsampling: 1
+      sample_stride: 1
+      use_cached_index_map: false
+      normalize_actions: true
+      relative_rotation_actions: true
+      skip_first_frame: false
+      filter_no_motion: false
+
+val_datasets: null

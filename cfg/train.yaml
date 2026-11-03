@@ -1,0 +1,201 @@
+# Any-to-any cotrain forward-dynamics config.
+#
+# This file is "how to train": model + optimizer + training-loop + logging.
+# "What to train on" lives in the selected dataset config under cfg/datasets/:
+#   - default   = template  (fill-in-the-blanks schema for your own data)
+#   - paper run = `datasets=flomo`  (the exact mixture used in the paper)
+# The active input/output modality set is derived as the union of each entry's
+# `inputs` / `outputs`. Override any knob from the CLI, e.g. `optim.lr=5e-5`.
+
+defaults:
+  - datasets: template
+  - _self_
+
+# Train
+batch_size: 64                         # effective batch (grad-accum = batch_size / gpu_max_bs)
+gpu_max_bs: 16                         # H200 LoRA micro-batch; drop to 4 for full-finetune, raise to 32 for single-dataset
+generate_video: true  # log prediction-viz videos during training
+eval_interval: 1                       # epochs between val passes; 0 = off
+use_wandb: true
+wandb_group: null
+wandb_entity: null
+wandb_project: flomo
+wandb_run_id: null                     # if set, overrides the id loaded from checkpoint (use to reattach to an orphaned run)
+run_name: cotrain_default
+checkpoint: null                        # explicit .pt: resume full state when resume=true; initialize weights when resume=false
+resume: true                            # auto-resume run_name, or fully resume checkpoint; false starts a fresh run
+resume_skip_optimizer: false            # resume weights/counters but rebuild optimizer; ignored when resume=false
+compile: false
+grad_comm: none                        # DDP grad comm hook: none|bf16|powersgd|bf16_powersgd
+ddp_find_unused_parameters: false      # set true when batches conditionally skip output modalities (cotrain needs this).
+root_dir: null  # working-dir base for transient files (null = auto)
+# Directory with the downloaded Wan 2.2 weights (Wan2.2_VAE.pth + umT5 text
+# encoder). Override per machine, e.g. wan_ckpt_dir=/path/to/wan_checkpoints.
+wan_ckpt_dir: ./wan_checkpoints
+
+num_workers: 8
+num_epochs: 40
+# Cotrain "epoch" is a config knob: opt_steps_per_epoch = train_steps_per_epoch.
+# Sampler is WeightedRandomSampler(replacement=True), so each draw is i.i.d.
+# from the weighted mix. Use this knob to set epoch wall time (which gates
+# eval/checkpoint cadence). `train/data_pass` in wandb logs the fractional
+# count of natural data-passes alongside `train/epoch`.
+train_steps_per_epoch: 500
+save_interval: 1                        # epochs between `{epoch}.pt` checkpoints (epoch 1 is always saved)
+keep_ckpts: -1                          # most recent `{N}.pt` to retain; -1 to keep all
+ckpt_saves_per_epoch: 2                 # mid-epoch latest.pt saves per epoch (preemption safety); 0 disables.
+log_train_video_interval: 200           # opt steps between pred-viz logs
+val_ar_interval: 25                     # within a val pass, run AR infer() every Nth val sample.
+val_steps_per_epoch: 100                # val pass length, in batches of cfg.batch_size (null = full val set).
+
+# Train-only image augmentations. Forwarded to each dataset's `aug_cfg`; val
+# loaders never receive it. `BaseDataset` no-ops when every flag is false.
+# random_resized_crop additionally crops `motion_tokens` (upsample 64 -> 256,
+# apply primary view's crop, resize back to 64) so the flow grid stays
+# spatially aligned with the cond image. `intrs` is cropped with the same
+# window so the model's `viz_tracks` overlays remain correct. color_jitter
+# / gaussian_blur are never applied to motion_tokens.
+# `apply_to_types` is an allowlist of dataset-type strings (matches
+# `datasets[*].type`) that receive augs; types outside this list get
+# `aug_cfg=None`. EgoVerse is excluded by default.
+augmentations:
+  apply_to_types: [molmoact2, realyam]
+  color_jitter: false
+  color_jitter_strength: 0.25
+  hue: 0.1
+  gaussian_blur: false
+  gaussian_blur_kernel_size: [3, 5, 7]
+  gaussian_blur_sigma_min: 0.1
+  gaussian_blur_sigma_max: 2.0
+  gaussian_blur_p: 0.25
+  random_resized_crop: false
+  random_resized_crop_scale: [0.85, 1.0]
+  random_resized_crop_ratio: [0.98, 1.02]
+
+# ---------- Datasets ----------
+# `datasets:` / `val_datasets:` come from the selected `cfg/datasets/*.yaml`
+# (see `defaults:` above; default = template, paper run = `datasets=flomo`).
+# Active inputs  = ⋃ datasets[*].inputs, active outputs = ⋃ datasets[*].outputs.
+# Universal modalities (present in every entry) are stacked Tensors; partial
+# modalities become List[Tensor|None] + `{name}_mask`.
+
+# Motion-token statistics are computed once per dataset and cached under
+# ${FLOMO_CACHE_DIR}/track_stats (default: ~/.cache/flomo/track_stats).
+# Training installs these bounds before the first model step.
+track_stats:
+  velocity_percentile_low: 0.1
+  velocity_percentile_high: 99.9
+  max_trajectories: 2500
+
+forward_dynamics:
+  model: wan  # backbone family (wan)
+
+  # --- Cotrain plumbing ---
+  cotrain:
+    # Trunk concat order. Must exactly equal the union of active modalities
+    # across `datasets[*].inputs/outputs`. Inputs come before outputs (model
+    # enforces this from each modality's role); within each partition,
+    # modalities follow this list's order. Text doesn't enter the trunk concat
+    # (cross-attention only) — listing it is fine.
+    modality_order: [img, text, video, motion_tokens, action]
+
+    # Per-window UMT5 embeddings preprocessed under <split>/segment_text_emb/.
+    # Picks the segment whose [start, end) contains start_t/fps — same rule as
+    # the live `text` label, so the embedding matches the chosen label.
+    use_preprocessed_text_embs: true
+
+  # --- Per-modality declarations ---
+  # `kind` selects the Modality subclass; the rest are shape params consumed by
+  # `_build_modality` in flomo/models/FloMo.py.
+  # kind options: image | video | action | text | motion_tokens_wan_pretrained
+
+  # Wan-VAE-latent modalities (image/video/motion_tokens_wan_pretrained) carry
+  # their own `use_preprocessed` flag — preprocessed dispatch is per-modality.
+  modalities:
+    img:
+      kind: image           # single conditioning frame at start_t
+      h_lat: 16             # vae_spatial // vae_stride (256 / 16 = 16)
+      w_lat: 16
+      use_preprocessed: false   # false = live VAE encoding; true = stored vae_latent_h16
+    text:
+      kind: text
+      text_len: 512  # max text tokens
+      text_dim: 4096
+    video:
+      # 4 prediction-target latents (indices 1..4 of a Wan-VAE causal encode over
+      # 1 + 4*t_frames = 17 pixel frames; index 0 is the cond image, served by `img`).
+      kind: video
+      t_frames: 4
+      h_lat: 16
+      w_lat: 16
+      use_preprocessed: false   # false = live VAE encoding; true = stored vae_latent_h16
+    action:
+      kind: action
+      t_steps: 16  # action chunk length
+      feat_dim: 20         # RealYam eepose_6drot: [pos(3), rot6d(6), gripper(1)] × 2 arms
+    motion_tokens:
+      # Live track-to-flow encoding through the Wan VAE. Training installs
+      # per-dataset flow and cumulative-displacement bounds.
+      # Fifteen velocity frames are padded to seventeen before VAE encoding.
+      kind: motion_tokens_wan_pretrained
+      t_frames: 5
+      h_lat: 16
+      w_lat: 16
+      use_preprocessed: false
+
+  # Per-modality loss weights — required for every active OUTPUT modality.
+  loss_weights:
+    motion_tokens: 1.0
+    action: 1.0
+    video: 1.0
+
+  # --- Wan 2.2 / DreamZero diffusion config ---
+  wan:
+    model_id: "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
+    vae_weights: ${wan_ckpt_dir}/Wan2.2_VAE.pth
+    text_encoder_weights: ${wan_ckpt_dir}/models_t5_umt5-xxl-enc-bf16.pth
+
+    backbone: "bidirectional"             # cotrain requires bidirectional
+    vae_spatial: 256                      # matches lanczos-crop preprocessing; latent grid = 256 / 16 = 16
+
+    size_preset: "5B"
+    dim: null
+    num_heads: null
+    num_layers: null
+    ffn_dim: null
+
+    init_weights: "pretrained"  # pretrained | scratch
+
+    # Fine-tuning strategy: "full" (all DiT blocks trainable) or "lora"
+    # LoRA injects adapters into the listed Wan DiT linear layers; only the
+    # adapters + heads train. With LoRA, gpu_max_bs can be raised meaningfully.
+    finetune_mode: "lora"  # full | lora
+    lora:
+      rank: 64
+      alpha: 128
+      dropout: 0.0
+      target_modules: ["q", "k", "v", "o", "ffn.0", "ffn.2"]
+
+    num_train_timesteps: 1000
+    num_inference_steps: 50
+    scheduler_shift: 5.0  # flow-matching timestep shift
+
+# Optimizer
+optim:
+  # Defaults match the common LoRA cotrain. Full-finetune runs override with
+  # lr_schedule=null lr=1e-6 (for example).
+  lr_schedule: cosine_with_warmup  # cosine_with_warmup | linear | null
+  warmup_steps: 100
+  decay_steps: 10000
+  eta_min: 1.0e-5                      # floor LR for the cosine tail (ignored when lr_schedule != cosine_with_warmup)
+  clip_grad: 1.0
+  lr: 1.0e-4
+  weight_decay: 1.0e-06
+  adam_betas:
+    - 0.95
+    - 0.999
+  amp: true
+
+logging:
+  log_grad_norms: true
+  modules_to_monitor: ['backbone']
