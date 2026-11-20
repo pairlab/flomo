@@ -459,25 +459,22 @@ class MotionTokensWanPretrainedModality(_WanVAELatentModality):
         self._batch_ds_names: Optional[List[str]] = None
 
     def get_extra_state(self):
-        """Save the dataset-name -> buffer-row map with the per-DS buffers."""
-        return {"ds_names": sorted(self._ds_to_idx, key=self._ds_to_idx.get)}
+        return {"ds_names": list(self._ds_to_idx)}
 
     def set_extra_state(self, state) -> None:
         self._ds_to_idx = {n: i for i, n in enumerate(state["ds_names"])}
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
                               missing_keys, unexpected_keys, error_msgs):
-        # Per-DS buffers start empty; take the checkpoint's shapes before the copy.
+        # Per-DS buffers start empty; resize to the checkpoint's shape before copying.
         for name, buf in self.named_buffers(recurse=False):
             if name.startswith("per_ds_") and prefix + name in state_dict:
-                src = state_dict[prefix + name]
-                setattr(self, name, torch.empty(src.shape, dtype=buf.dtype, device=buf.device))
+                setattr(self, name, buf.new_empty(state_dict[prefix + name].shape))
         super()._load_from_state_dict(state_dict, prefix, local_metadata, strict,
                                       missing_keys, unexpected_keys, error_msgs)
-        # Checkpoints saved before the name map was persisted lack it; not an error.
-        extra_key = prefix + "_extra_state"
-        if extra_key not in state_dict and extra_key in missing_keys:
-            missing_keys.remove(extra_key)
+        # Older checkpoints have no dataset-name map.
+        if prefix + "_extra_state" in missing_keys:
+            missing_keys.remove(prefix + "_extra_state")
 
     def set_flow_pct_bounds_per_dataset(self, bounds: Dict[str, Tuple[Sequence[float], Sequence[float]]]) -> None:
         """Install per-dataset (pct_low, pct_high) bounds."""

@@ -628,8 +628,7 @@ def main(cfg):
     else:
         start_epoch = 1
 
-    # After the checkpoint load: a base checkpoint's saved per-dataset stats
-    # must not replace the stats of this run's datasets.
+    # After loading, so a base checkpoint's stats don't replace this run's.
     _install_motion_token_stats(model, cfg, per_ds, accelerator)
 
     if cfg.wandb_run_id is not None:
