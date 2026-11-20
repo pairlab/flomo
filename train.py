@@ -565,7 +565,6 @@ def main(cfg):
 
     model = FloMo(cfg).to(device)
     model.setup_model()
-    _install_motion_token_stats(model, cfg, per_ds, accelerator)
 
     optim_cfg = cfg.optim
     optimizer = get_optim(
@@ -628,6 +627,10 @@ def main(cfg):
                 log_main(f"[resume] scheduler disabled; lr -> {cfg.optim.lr}", accelerator=accelerator)
     else:
         start_epoch = 1
+
+    # After the checkpoint load: a base checkpoint's saved per-dataset stats
+    # must not replace the stats of this run's datasets.
+    _install_motion_token_stats(model, cfg, per_ds, accelerator)
 
     if cfg.wandb_run_id is not None:
         wandb_run_id = cfg.wandb_run_id

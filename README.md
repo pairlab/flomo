@@ -73,6 +73,11 @@ training data. They differ only in what they predict:
 hf download shitijgovil/FloMo vma/flomo_vma.pt --local-dir ./flomo_ckpts
 ```
 
+Each checkpoint stores the per-dataset motion-token scale stats, so
+`decode_positions` can turn predicted motion tokens into 3D positions after a
+plain `load_state_dict`. Copies downloaded before 2026-11-19 lack these stats;
+download them again.
+
 ## Inference
 
 `infer_example.py` takes camera images, a task string, and the current end-effector
