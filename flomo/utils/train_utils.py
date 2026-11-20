@@ -291,13 +291,14 @@ def save_checkpoint(
 ):
     """
     Saves the model and optimizer state.
-    For LoRA training, only saves trainable parameters to reduce checkpoint size.
+    For LoRA training, saves only trainable parameters and buffers to reduce checkpoint size.
     """
     os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
 
     if lora_enabled:
+        param_names = {n for n, _ in model.named_parameters()}
         model_state = {k: v for k, v in model.state_dict().items()
-                      if any(k.startswith(n) for n, p in model.named_parameters() if p.requires_grad)}
+                      if k not in param_names or any(k.startswith(n) for n, p in model.named_parameters() if p.requires_grad)}
         print(f"LoRA checkpoint: saving {len(model_state)} trainable parameter tensors (original: {len(model.state_dict())})")
     else:
         model_state = model.state_dict()
